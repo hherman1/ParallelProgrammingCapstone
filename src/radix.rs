@@ -1,38 +1,65 @@
 
 use rayon::prelude::*;
+use std;
 
 const N_BUCKETS: usize = 2 * 2 * 2 * 2;
 const STEPS_PER_CHAR: usize = 8 / 4;
 const N_STEPS: usize = STEPS_PER_CHAR * 3;
 
+
 fn radix_step<'a>(source: & [[u8; 3]],
                   original_indices: &'a mut [usize], original_indices_swap: &'a mut [usize],
                   current_step_num: usize,
-                  counts: &mut [usize], counts_before: &mut [usize]
+                  counts: &mut [usize], counts_before: &mut [usize],
 ) {
+    const PARALLEL_BATCH_COUNT: usize = 1000;
+    const BATCH_SIZE: usize = 4096;
+
+    let elements_received = original_indices.len();
+
+    let batches =  (elements_received as f64/BATCH_SIZE as f64).ceil() as usize;
 
     let even_phase = 1-(current_step_num % 2);
     let sub_index = current_step_num/STEPS_PER_CHAR;
 
     macro_rules! get_bucket {
-        ($b:ident) => {{
+        ($b:expr) => {{
             let byte = $b[sub_index];
             (((byte >> even_phase*4) & 0b00001111) as usize)
         }}
     }
+    if true {//batches <= PARALLEL_BATCH_COUNT {
+        counts.iter_mut().for_each(|v| {
+            *v = 0;
+        });
+        for i in 0..elements_received {
+            counts[get_bucket!( source[original_indices[i]] )] += 1;
+        }
 
-    counts.copy_from_slice(&original_indices.par_iter()
-        .fold(|| [0usize; N_BUCKETS], |mut sub_counts: [usize; N_BUCKETS], og_index: &usize| {
-            let byte_triple = source[*og_index];
-            sub_counts[get_bucket!(byte_triple)] += 1;
-            return sub_counts;
-        })
-        .reduce(|| [0usize; N_BUCKETS], |mut a: [usize; N_BUCKETS], b: [usize; N_BUCKETS]| {
-            for (el_a, el_b) in a.iter_mut().zip(b.iter()) {
-                *el_a += el_b;
-            }
-            a
-        }));
+    } else {
+//        decision remains to be made if manually batching is faster in general than rayon's built in fold batching
+//        from benchmarks it seems to be nearly the same speed .. if we don't gain much off manually batching
+//        using rayon's is better.. it makes the code simpler and may get faster over time with improvements to
+//        rayon.. so don't delete this code yet!
+
+        counts.copy_from_slice(&((0..batches).into_par_iter()
+            .map(|batch| {
+                let mut sub_counts = [0usize; N_BUCKETS];
+                for i in batch*BATCH_SIZE..std::cmp::min((batch+1)*BATCH_SIZE, elements_received) {
+                    sub_counts[get_bucket!(source[original_indices[i]])] += 1;
+                }
+                sub_counts
+            })
+            .reduce(|| [0usize; N_BUCKETS], |mut a, b| {
+                for i in 0..N_BUCKETS {
+                    a[i] += b[i];
+                }
+                a
+            })) as &[usize]);
+
+    }
+
+
 
     counts_before[0] = 0;
     for i in 1..counts_before.len() {
@@ -55,11 +82,17 @@ fn radix_recursive_manager_step<'a>(source: & [[u8; 3]],
                                     current_step_num: usize,
                                     counts: &mut [usize], counts_before: &mut [usize]
 ) {
+
+    const PARALLEL_ELEMENT_COUNT: usize = 128;
+
     radix_step(source, original_indices, original_indices_swap, current_step_num, counts, counts_before);
+    if current_step_num == N_STEPS - 1 {
+        return;
+    }
 
-    const PARALLEL_ELEMENT_COUNT: usize = 16;
+    let elements_received: usize = original_indices.len();
 
-    if original_indices.len() <= 1 {
+    if elements_received <= 1 {
         return;
     }
 
@@ -87,16 +120,25 @@ fn radix_recursive_manager_step<'a>(source: & [[u8; 3]],
 
         }
     }
-    if current_step_num == N_STEPS - 1 {
-        return;
+
+    if elements_received <= PARALLEL_ELEMENT_COUNT {
+        sub_slices.iter_mut()
+            .for_each(|&mut (ref mut og_indices, ref mut og_indices_swap)| {
+                radix_recursive_manager_step(source,
+                                             *og_indices, *og_indices_swap,
+                                             current_step_num+1,
+                                             counts, counts_before);
+            });
+
+    } else {
+        sub_slices.par_iter_mut()
+            .for_each(|&mut (ref mut og_indices, ref mut og_indices_swap)| {
+                radix_recursive_manager_step(source,
+                                             *og_indices, *og_indices_swap,
+                                             current_step_num+1,
+                                             &mut [0; N_BUCKETS], &mut [0; N_BUCKETS]);
+            });
     }
-    sub_slices.par_iter_mut()
-        .for_each(|&mut (ref mut og_indices, ref mut og_indices_swap)| {
-            radix_recursive_manager_step(source,
-                                         *og_indices, *og_indices_swap,
-                                         current_step_num+1,
-                                         &mut [0; N_BUCKETS], &mut [0; N_BUCKETS]);
-        });
 }
 pub fn par_radix_sort(strs: & [[u8; 3]]) -> Box<[usize]> {
 
@@ -116,10 +158,10 @@ pub fn par_radix_sort(strs: & [[u8; 3]]) -> Box<[usize]> {
 }
 #[cfg(test)]
 mod test {
-    use std;
     use test;
     use rand;
     use rand::Rng;
+    use rayon::prelude::ParallelSliceMut;
     quickcheck! {
         fn matches_sort_quickcheck(data: Vec<u8>) -> bool {
             matches_sort(data)
@@ -141,7 +183,7 @@ mod test {
 
     fn triplet_slice(data: Vec<u8>) -> Box<[[u8; 3]]> {
         let mut res = Vec::<[u8; 3]>::with_capacity(data.len()/3);
-        for i in (0..data.len()/3) {
+        for i in 0..data.len()/3 {
             res.push([data[3*i], data[3*i + 1], data[3*i + 2]]);
         }
         res.into_boxed_slice()
@@ -153,11 +195,11 @@ mod test {
 
         let mut triplet_slice_radix = vec![[0,0,0]; triplet_slice.len()];
         triplet_slice_radix.copy_from_slice(&triplet_slice[..]);
-        let mut triplet_slice_radix = triplet_slice_radix.into_boxed_slice();
+        let triplet_slice_radix = triplet_slice_radix.into_boxed_slice();
 
         triplet_slice.sort();
 
-        let mut triplet_slice_radix_sorted: Vec<[u8; 3]> =  super::par_radix_sort(&*triplet_slice_radix).iter()
+        let triplet_slice_radix_sorted: Vec<[u8; 3]> =  super::par_radix_sort(&*triplet_slice_radix).iter()
             .map(|el| {
                 triplet_slice_radix[*el]
             }).collect();
@@ -172,14 +214,43 @@ mod test {
         triplet_slice(data)
     }
 
+    const BENCH_SIZE: usize = 65536 * 2;
+
     #[bench]
     fn radix_bench(bench: &mut test::Bencher) {
-        let arr = random_triplet_slice(65536);
-
         bench.iter(|| {
+            let arr = random_triplet_slice(BENCH_SIZE);
             super::par_radix_sort(&arr[..]);
         })
     }
+
+    #[bench]
+    fn radix_step_bench(bench: &mut test::Bencher) {
+        let strs = random_triplet_slice(65536);
+
+        let mut original_indices = Vec::<usize>::with_capacity(strs.len());
+        original_indices.extend(0..strs.len());
+        let mut original_indices = original_indices.into_boxed_slice().to_owned();
+
+        let mut original_indices_swap = Vec::<usize>::with_capacity(strs.len());
+        original_indices_swap.extend(0..strs.len());
+        let mut original_indices_swap = original_indices_swap.into_boxed_slice().to_owned();
+
+
+        bench.iter(|| {
+            super::radix_step(&strs[..], &mut original_indices, &mut original_indices_swap, 0,
+                                                &mut [0; 16], &mut [0; 16]);
+        })
+    }
+    #[bench]
+    fn sort_bench(bench: &mut test::Bencher) {
+
+        bench.iter(|| {
+            let mut arr = random_triplet_slice(BENCH_SIZE);
+            arr.par_sort();
+        })
+    }
+
 
 
 
