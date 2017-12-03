@@ -6,37 +6,85 @@ const N_BUCKETS: usize = 2 * 2 * 2 * 2;
 const STEPS_PER_CHAR: usize = 8 / 4;
 const N_STEPS: usize = STEPS_PER_CHAR * 3;
 
+pub trait RadixPrecompute {
+    type StepConsts: Sync = ();
+    fn get_step_consts(cur_steps: usize) -> Self::StepConsts;
+}
 
-fn radix_step<'a>(source: & [[u8; 3]],
-                  original_indices: &'a mut [usize], original_indices_swap: &'a mut [usize],
-                  current_step_num: usize,
-                  counts: &mut [usize], counts_before: &mut [usize],
-) {
-    const PARALLEL_BATCH_COUNT: usize = 1000;
-    const BATCH_SIZE: usize = 4096;
+pub trait Radix where Self: RadixPrecompute {
+    const N_BUCKETS: usize;
+    const N_STEPS: usize;
 
-    let elements_received = original_indices.len();
+    // The step consts must be read only because this function is intended to be run
+    // highly in parallel. So we cannot achieve a mutable borrow because you can only have
+    // one of those at once, whereas we can have as many read only borrows as we want
+    // at a given time. So this must be a plain reference, not &mut, although
+    // it would be nice if there is ever a way to make this &mut.
+    fn get_bucket(self: Self, cur_step: usize, step_consts: &Self::StepConsts) -> usize;
 
-    let batches =  (elements_received as f64/BATCH_SIZE as f64).ceil() as usize;
 
-    let even_phase = 1-(current_step_num % 2);
-    let sub_index = current_step_num/STEPS_PER_CHAR;
+    const HISTOGRAM_BATCH_SIZE: usize = 4096 * 32;
+    const HISTOGRAM_PARALLEL_BATCH_COUNT: usize = 4;
 
-    macro_rules! get_bucket {
-        ($b:expr) => {{
-            let byte = $b[sub_index];
-            (((byte >> even_phase*4) & 0b00001111) as usize)
-        }}
+    const RADIX_PARALLEL_EL_COUNT: usize = 128;
+}
+
+mod radix_byte_triple {
+    struct EvenIndexData {
+        even_phase: u8,
+        sub_index: usize
     }
-    if true {//batches <= PARALLEL_BATCH_COUNT {
+
+    impl super::RadixPrecompute for [u8; 3] {
+        type StepConsts = EvenIndexData;
+        fn get_step_consts(cur_step: usize) -> EvenIndexData {
+            EvenIndexData {
+                even_phase : 1-(cur_step % 2) as u8,
+                sub_index : cur_step/2
+            }
+        }
+    }
+
+    impl super::Radix for [u8; 3] {
+
+        const N_BUCKETS: usize = 16;
+        const N_STEPS: usize = 2 * 3;
+
+
+
+        #[inline(always)]
+        fn get_bucket(self: [u8; 3], cur_step: usize, step_consts: &EvenIndexData) -> usize {
+            let byte = self[step_consts.sub_index];
+            (((byte >> step_consts.even_phase * 4) & 0b00001111) as usize)
+        }
+    }
+}
+
+fn radix_step<'a, T>(data: &'a mut [T], data_swap: &'a mut [T],
+                  current_step_num: usize,
+                  counts: &mut [usize], counts_before: &mut [usize])
+where T:'a + Radix + Copy + Sync
+{
+
+    let batch_size: usize = T::HISTOGRAM_BATCH_SIZE;
+    let parallel_batch_count: usize = T::HISTOGRAM_PARALLEL_BATCH_COUNT;
+
+    let step_consts = T::get_step_consts(current_step_num);
+
+    let elements_received = data.len();
+
+    let batches =  (elements_received as f64/ batch_size as f64).ceil() as usize;
+
+
+    if true { //batches <= parallel_batch_count {
         counts.iter_mut().for_each(|v| {
             *v = 0;
         });
         for i in 0..elements_received {
-            counts[get_bucket!( source[original_indices[i]] )] += 1;
+            counts[data[i].get_bucket(current_step_num, &step_consts)] += 1;
         }
-
     } else {
+
 //        decision remains to be made if manually batching is faster in general than rayon's built in fold batching
 //        from benchmarks it seems to be nearly the same speed .. if we don't gain much off manually batching
 //        using rayon's is better.. it makes the code simpler and may get faster over time with improvements to
@@ -45,8 +93,8 @@ fn radix_step<'a>(source: & [[u8; 3]],
         counts.copy_from_slice(&((0..batches).into_par_iter()
             .map(|batch| {
                 let mut sub_counts = [0usize; N_BUCKETS];
-                for i in batch*BATCH_SIZE..std::cmp::min((batch+1)*BATCH_SIZE, elements_received) {
-                    sub_counts[get_bucket!(source[original_indices[i]])] += 1;
+                for i in batch* batch_size..std::cmp::min((batch+1)* batch_size, elements_received) {
+                    sub_counts[data[i].get_bucket(current_step_num, &step_consts)] += 1;
                 }
                 sub_counts
             })
@@ -59,62 +107,59 @@ fn radix_step<'a>(source: & [[u8; 3]],
 
     }
 
-
-
     counts_before[0] = 0;
     for i in 1..counts_before.len() {
         counts_before[i] = counts_before[i-1] + counts[i-1];
     }
 
-
-    for i in 0..original_indices.len() {
-        let b = source[original_indices[i]];
-        let bucket_pos = get_bucket!(b);
-        original_indices_swap[counts_before[bucket_pos]] = original_indices[i];
+    for i in 0..elements_received {
+        let bucket_pos = data[i].get_bucket(current_step_num, &step_consts);
+        data_swap[counts_before[bucket_pos]] = data[i];
         counts_before[bucket_pos] += 1;
     }
-    original_indices.copy_from_slice(original_indices_swap);
+    data.copy_from_slice(data_swap);
 
 }
 
-fn radix_recursive_manager_step<'a>(source: & [[u8; 3]],
-                                    original_indices: &'a mut [usize], original_indices_swap: &'a mut [usize],
+fn radix_recursive_manager_step<'a, T>(data: &'a mut [T], data_swap: &'a mut [T],
                                     current_step_num: usize,
-                                    counts: &mut [usize], counts_before: &mut [usize]
-) {
+                                    counts: &mut [usize], counts_before: &mut [usize])
+    where T:'a + Radix + Copy + Sync + Send
+{
 
     const PARALLEL_ELEMENT_COUNT: usize = 128;
 
-    radix_step(source, original_indices, original_indices_swap, current_step_num, counts, counts_before);
+    radix_step(data, data_swap, current_step_num, counts, counts_before);
+
     if current_step_num == N_STEPS - 1 {
         return;
     }
 
-    let elements_received: usize = original_indices.len();
+    let elements_received: usize = data.len();
 
     if elements_received <= 1 {
         return;
     }
 
-    let mut sub_slices = Vec::<(&mut [usize], &mut [usize])>::with_capacity(16);
+    let mut sub_slices = Vec::<(&mut [T], &mut [T])>::with_capacity(N_BUCKETS);
 
-    let mut remaining_indices = original_indices;
-    let mut remaining_indices_swap = original_indices_swap;
+    let mut remaining_data = data;
+    let mut remaining_data_swap = data_swap;
 
     let mut last_split_index = 0usize;
     for last_filled_index in counts_before.iter() {
         if *last_filled_index != last_split_index {
 
-            let old_remaining_indices = remaining_indices;
-            let old_remaining_indices_swap = remaining_indices_swap;
+            let old_remaining_data = remaining_data;
+            let old_remaining_data_swap = remaining_data_swap;
 
-            let (original_indices_tmp, new_original_indices) = old_remaining_indices.split_at_mut(last_filled_index - last_split_index);
-            let (original_indices_swap_tmp, new_original_indices_swap) = old_remaining_indices_swap.split_at_mut(last_filled_index - last_split_index);
+            let (data_tmp, new_data) = old_remaining_data.split_at_mut(last_filled_index - last_split_index);
+            let (data_swap_tmp, new_data_swap) = old_remaining_data_swap.split_at_mut(last_filled_index - last_split_index);
 
-            remaining_indices = new_original_indices;
-            remaining_indices_swap = new_original_indices_swap;
+            remaining_data = new_data;
+            remaining_data_swap = new_data_swap;
 
-            sub_slices.push((original_indices_tmp, original_indices_swap_tmp));
+            sub_slices.push((data_tmp, data_swap_tmp));
 
             last_split_index = *last_filled_index;
 
@@ -123,38 +168,28 @@ fn radix_recursive_manager_step<'a>(source: & [[u8; 3]],
 
     if elements_received <= PARALLEL_ELEMENT_COUNT {
         sub_slices.iter_mut()
-            .for_each(|&mut (ref mut og_indices, ref mut og_indices_swap)| {
-                radix_recursive_manager_step(source,
-                                             *og_indices, *og_indices_swap,
+            .for_each(|&mut (ref mut sub_data, ref mut sub_data_swap)| {
+                radix_recursive_manager_step(*sub_data, *sub_data_swap,
                                              current_step_num+1,
                                              counts, counts_before);
             });
 
     } else {
         sub_slices.par_iter_mut()
-            .for_each(|&mut (ref mut og_indices, ref mut og_indices_swap)| {
-                radix_recursive_manager_step(source,
-                                             *og_indices, *og_indices_swap,
+            .for_each(|&mut (ref mut sub_data, ref mut sub_data_swap)| {
+                radix_recursive_manager_step(*sub_data, *sub_data_swap,
                                              current_step_num+1,
                                              &mut [0; N_BUCKETS], &mut [0; N_BUCKETS]);
             });
     }
 }
-pub fn par_radix_sort(strs: & [[u8; 3]]) -> Box<[usize]> {
+pub fn par_radix_sort<'a, T>(data: &'a mut [T])
+    where T:'a + Radix + Copy + Sync + Send + Clone + Default
+{
+    let mut data_swap = vec![<T>::default(); data.len()];
 
-//    let original_indices: &[usize] = (0..strs.len()).as_slice();
-    let mut original_indices = Vec::<usize>::with_capacity(strs.len());
-    original_indices.extend(0..strs.len());
-    let mut original_indices = original_indices.into_boxed_slice().to_owned();
-
-    let mut original_indices_swap = Vec::<usize>::with_capacity(strs.len());
-    original_indices_swap.extend(0..strs.len());
-    let mut original_indices_swap = original_indices_swap.into_boxed_slice().to_owned();
-
-    radix_recursive_manager_step(strs, &mut original_indices, &mut original_indices_swap, 0,
+    radix_recursive_manager_step(data, data_swap.as_mut_slice(), 0,
                                  &mut [0; 16], &mut [0; 16]);
-
-    return original_indices;
 }
 #[cfg(test)]
 mod test {
@@ -195,15 +230,11 @@ mod test {
 
         let mut triplet_slice_radix = vec![[0,0,0]; triplet_slice.len()];
         triplet_slice_radix.copy_from_slice(&triplet_slice[..]);
-        let triplet_slice_radix = triplet_slice_radix.into_boxed_slice();
 
         triplet_slice.sort();
 
-        let triplet_slice_radix_sorted: Vec<[u8; 3]> =  super::par_radix_sort(&*triplet_slice_radix).iter()
-            .map(|el| {
-                triplet_slice_radix[*el]
-            }).collect();
-        triplet_slice_radix_sorted.into_boxed_slice() == triplet_slice
+        super::par_radix_sort(triplet_slice_radix.as_mut_slice());
+        triplet_slice_radix.as_slice() == &*triplet_slice
 
     }
 
@@ -214,36 +245,32 @@ mod test {
         triplet_slice(data)
     }
 
-    const BENCH_SIZE: usize = 65536 * 2;
+    const BENCH_SIZE: usize = 65536 * 8;
 
     #[bench]
     fn radix_bench(bench: &mut test::Bencher) {
         bench.iter(|| {
-            let arr = random_triplet_slice(BENCH_SIZE);
-            super::par_radix_sort(&arr[..]);
+            let mut arr = random_triplet_slice(BENCH_SIZE);
+            super::par_radix_sort(&mut *arr);
         })
     }
 
     #[bench]
     fn radix_step_bench(bench: &mut test::Bencher) {
-        let strs = random_triplet_slice(65536);
+        let mut data = random_triplet_slice(BENCH_SIZE);
 
-        let mut original_indices = Vec::<usize>::with_capacity(strs.len());
-        original_indices.extend(0..strs.len());
-        let mut original_indices = original_indices.into_boxed_slice().to_owned();
-
-        let mut original_indices_swap = Vec::<usize>::with_capacity(strs.len());
-        original_indices_swap.extend(0..strs.len());
-        let mut original_indices_swap = original_indices_swap.into_boxed_slice().to_owned();
+        let mut data_swap = vec![[0,0,0]; BENCH_SIZE];
 
 
         bench.iter(|| {
-            super::radix_step(&strs[..], &mut original_indices, &mut original_indices_swap, 0,
-                                                &mut [0; 16], &mut [0; 16]);
+            super::radix_step(&mut *data, data_swap.as_mut_slice(),
+                              0,
+                              &mut [0; 16], &mut [0; 16]);
         })
     }
+
     #[bench]
-    fn sort_bench(bench: &mut test::Bencher) {
+    fn par_sort_bench(bench: &mut test::Bencher) {
 
         bench.iter(|| {
             let mut arr = random_triplet_slice(BENCH_SIZE);
@@ -251,13 +278,22 @@ mod test {
         })
     }
 
+    #[bench]
+    fn sort_bench(bench: &mut test::Bencher) {
+
+        bench.iter(|| {
+            let mut arr = random_triplet_slice(BENCH_SIZE);
+            arr.sort();
+        })
+    }
 
 
 
     #[test]
     fn simple_sort() {
-        let x = [[1,3,55], [249, 24, 4], [1, 2, 127], [1,2, 126]];
-        let res = vec!(3usize,2,0,1).into_boxed_slice();
-        assert_eq!(super::par_radix_sort(&x[0..4] ), res );
+        let mut x = [[1,3,55], [249, 24, 4], [1, 2, 127], [1,2, 126]];
+        let sorted = [[1,2,126], [1, 2, 127], [1, 3, 55], [249, 24, 4]];
+        super::par_radix_sort(&mut x[..]);
+        assert_eq!(x, sorted);
     }
 }

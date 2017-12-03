@@ -1,4 +1,5 @@
 #![feature(test)]
+#![feature(associated_type_defaults)]
 
 #[cfg(test)]
 #[macro_use]
@@ -17,6 +18,6 @@ extern crate rayon;
 mod radix;
 
 fn main() {
-
+    println!("{}", 5usize/2usize);
 }
 
