@@ -6,6 +6,12 @@ const N_BUCKETS: usize = 2 * 2 * 2 * 2;
 const STEPS_PER_CHAR: usize = 8 / 4;
 const N_STEPS: usize = STEPS_PER_CHAR * 3;
 
+// The purpose of this is to allow things which are constant for all sorted members
+// in calculating their bucket to be precomputed..
+// the idea was to precompute which sub_byte should be considered for [u8; 3]s
+// but reading that data from a struct *slowed things down*. Very frustrating!!
+// There appears to be some cost for making this all abstract too.. also frustrating!!
+
 pub trait RadixPrecompute {
     type StepConsts: Sync = ();
     fn get_step_consts(cur_steps: usize) -> Self::StepConsts;
@@ -30,18 +36,10 @@ pub trait Radix where Self: RadixPrecompute {
 }
 
 mod radix_byte_triple {
-    struct EvenIndexData {
-        even_phase: u8,
-        sub_index: usize
-    }
-
     impl super::RadixPrecompute for [u8; 3] {
-        type StepConsts = EvenIndexData;
-        fn get_step_consts(cur_step: usize) -> EvenIndexData {
-            EvenIndexData {
-                even_phase : 1-(cur_step % 2) as u8,
-                sub_index : cur_step/2
-            }
+        type StepConsts = ();
+        fn get_step_consts(cur_step: usize) -> () {
+            ()
         }
     }
 
@@ -50,12 +48,12 @@ mod radix_byte_triple {
         const N_BUCKETS: usize = 16;
         const N_STEPS: usize = 2 * 3;
 
-
-
         #[inline(always)]
-        fn get_bucket(self: [u8; 3], cur_step: usize, step_consts: &EvenIndexData) -> usize {
-            let byte = self[step_consts.sub_index];
-            (((byte >> step_consts.even_phase * 4) & 0b00001111) as usize)
+        fn get_bucket(self: [u8; 3], cur_step: usize, step_consts: &()) -> usize {
+            let even_phase = 1-(cur_step % 2) as u8;
+            let sub_index = cur_step/2;
+            let byte = self[sub_index];
+            (((byte >> even_phase * 4) & 0b00001111) as usize)
         }
     }
 }
@@ -76,6 +74,8 @@ where T:'a + Radix + Copy + Sync
     let batches =  (elements_received as f64/ batch_size as f64).ceil() as usize;
 
 
+    // Writing anything but `true` here (such as the commented condition following it)
+    // results in abuot 3 ms of slowdown when benched on 65536 * 8 random byte triplets.
     if true { //batches <= parallel_batch_count {
         counts.iter_mut().for_each(|v| {
             *v = 0;
