@@ -23,7 +23,7 @@ macro_rules! dbg {
 
 // Consts
 
-pub const BENCH_SIZE: usize = 65536 * 128;
+pub const BENCH_SIZE: usize = 65536 * 8;
 pub const DEFAULT_TEST_SIZE: usize = 65536;
 
 // Generation
