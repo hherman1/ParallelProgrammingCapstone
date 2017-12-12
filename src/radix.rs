@@ -34,7 +34,7 @@ pub trait Radix where Self: RadixPrecompute {
 mod radix_byte_triple {
     impl super::RadixPrecompute for [u8; 3] {
         type StepConsts = ();
-        fn get_step_consts(cur_step: usize) -> () {
+        fn get_step_consts(_cur_step: usize) -> () {
             ()
         }
     }
@@ -45,7 +45,7 @@ mod radix_byte_triple {
         const N_STEPS: usize = 2 * 3;
 
         #[inline(always)]
-        fn get_bucket(self: &[u8; 3], cur_step: usize, step_consts: &()) -> usize {
+        fn get_bucket(self: &[u8; 3], cur_step: usize, _step_consts: &()) -> usize {
             let even_phase = 1-(cur_step % 2) as u8;
             let sub_index = cur_step/2;
             let byte = self[sub_index];
@@ -181,7 +181,7 @@ where T:'a + self::Radix + Copy + Sync + std::fmt::Debug,
 {
 
     let batch_size: usize = T::HISTOGRAM_BATCH_SIZE;
-    let parallel_batch_count: usize = T::HISTOGRAM_PARALLEL_BATCH_COUNT;
+//    let parallel_batch_count: usize = T::HISTOGRAM_PARALLEL_BATCH_COUNT;
 
     let step_consts = T::get_step_consts(current_step_num);
 
@@ -377,7 +377,7 @@ mod test {
     #[test]
     fn matches_indices_sort_order_test() {
         let dat = random_slice_with_zeroes(TEST_TRIPLET_NUM);
-        let mut dat_triplet = to_suffix_triplet_slice(dat.as_ref());
+        let dat_triplet = to_suffix_triplet_slice(dat.as_ref());
 
         let mut indices = (0..TEST_TRIPLET_NUM - 2).collect::<Vec<usize>>();
 
@@ -420,7 +420,7 @@ mod test {
     #[bench]
     fn radix_indices_bench(bench: &mut test::Bencher) {
         bench.iter(|| {
-            let mut arr = random_slice_with_zeroes(BENCH_SIZE);
+            let arr = random_slice_with_zeroes(BENCH_SIZE);
             let mut order: Vec<usize> = (0..arr.len() - 2).collect();
             super::par_radix_triplet_indices_sort(arr.as_ref(), order.as_mut());
         })
