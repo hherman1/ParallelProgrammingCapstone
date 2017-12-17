@@ -1,3 +1,5 @@
+use std;
+
 #[cfg(test)]
 use rand;
 #[cfg(test)]
@@ -9,7 +11,7 @@ macro_rules! dbg {
     ($first:expr $(, $var:expr)* ) => {{
         #[cfg(debug_assertions)]
         {
-            print!("{}:{}> {}", file!(), line!(), $first);
+            print!("{}:{}> {:?}", file!(), line!(), $first);
             $({
                 print!(", {:?}", $var);
             })*
@@ -18,20 +20,35 @@ macro_rules! dbg {
     }}
 }
 
+// See izip in itertools source code for further explanation
+#[macro_export]
+macro_rules! generic_izip {
+    (@make_closure $argument:pat => $result:expr ; ) => {
+        |$argument| $result
+    };
+    (@make_closure $argument:pat => ( $($arg:tt)* ) ; $_next:expr $(, $iter:expr)*) => {
+        generic_izip!(@make_closure ($argument, b) => ( $($arg)*, b ) ; $($iter),*)
+    };
+    ($first:expr $(, $iter:expr)*) => {{
+        $first
+        $(.zip($iter))*
+        .map(generic_izip!(@make_closure a => (a) ; $($iter),*))
+    }};
+}
+
 // Consts
 
 pub const BENCH_SIZE: usize = 65536 * 8;
 pub const DEFAULT_TEST_SIZE: usize = 65536;
 
-// Generation
 
 #[cfg(test)]
-pub fn random_slice(len: usize) -> Box<[u8]> {
+pub fn random_slice<T: rand::Rand>(len:usize) -> Box<[T]> {
     let mut rng = rand::thread_rng();
-    let mut out = vec![0u8; len].into_boxed_slice();
-    rng.fill_bytes(out.as_mut());
-    out
+    rng.gen_iter().take(len).collect::<Vec<T>>().into_boxed_slice()
 }
+
+
 
 #[cfg(test)]
 pub fn random_slice_with_zeroes(len: usize) -> Box<[u8]> {
@@ -108,13 +125,16 @@ pub fn n_split_slice<T>(slice: & [T], n: usize) -> Box<[& [T]]> {
     multi_split_slice(slice, bounds_for_num_chunks(len, n).as_ref())
 }
 
+pub struct SyncUnsafeCell<T>(std::cell::UnsafeCell<T>);
+unsafe impl<T> Sync for SyncUnsafeCell<T> {}
+
 #[cfg(test)]
 mod test {
     use super::*;
 
     #[test]
     fn chunk_slice_test() {
-        let mut data = random_slice(30);
+        let mut data = random_slice::<u8>(30);
         let data_copy = data.clone();
         let chunk_size = 30 / 8;
         let chunked = super::chunk_mut_slice(data.as_mut(), chunk_size);
