@@ -1,3 +1,17 @@
+// Ideas:
+// 1. Ship binarys for Widnows, Mac, and Linux along with test data which
+// we can make available through GitHub's releases section, and can advertise
+// to the class to download and try out during our presentation... we'll want to warn them
+// while we're setting up that they should get their computers out if they want to try our finished
+// project.
+// We also need to give instructions on how to verify the results, that they can use `unzip`
+// to undo the compressed files. We can put full demo instructions in the repo's readme.
+// Hopefully there will be at least a couple people who actually want to try it.
+// 2. We can't cover all the tricks in detail in time. We should f ocus on whats the problem and
+// the central idea.
+// 3. We should cite the 3 main papers we used (1 PLZ77 paper , 2 suffix array papers);
+
+
 #![feature(test)]
 #![feature(associated_type_defaults)]
 
@@ -13,76 +27,30 @@ extern crate rand;
 #[cfg(test)]
 extern crate test;
 
+extern crate core;
 extern crate rayon;
-
 extern crate suffix;
 
+#[macro_use]
+mod utils;
+
 mod radix;
+mod suffix;
 
-// This is just a plain old parentheses generator.. nothing to see here.. no need to look
-// in the other files. You've seen it all friend. Bye now! Please go!
-// Theres nothing else to see here!
+use std::io::Read;
+
 fn main() {
-    //parens_pairs(10);
-    //test_suffix();
-}
+    let args = std::env::args();
+    args.skip(1).for_each(|arg| {
+        let mut f = std::fs::File::open(std::path::Path::new(&arg)).unwrap();
+        let mut buf = Vec::with_capacity(f.metadata().unwrap().len() as usize);
+        f.read_to_end(&mut buf).unwrap();
+        println!("{} [{}]> {:?}", arg, buf.len(), &buf[0..10]);
 
-#[derive(Copy, Clone, Debug)]
-enum Parens {
-    Left,
-    Right,
-    None
-}
-
-
-fn to_string(ps: &Vec<Parens>) -> String {
-    ps.iter()
-        .map(|p| match *p {
-            Parens::Left => '(',
-            Parens::Right => ')',
-            Parens::None => ' '
-        }).collect()
-}
-
-fn parens_pairs_helper(scope: &rayon::Scope, outstanding_lefts: u64, remaining_lefts: u64, parens: &mut Vec<Parens>, idx: usize) {
-    // For each left paren, there are *4* (not 2) recursive calls. 2 for deciding what to put after that left paren,
-    // and 2 to decide what to put after its corresponding right paren.
-    const PARALLEL_LEFT_COUNT: u64 = 5;
-    if outstanding_lefts == 0 && remaining_lefts == 0 {
-        println!("{}", to_string(parens));
-        return;
-    }
-
-
-    if outstanding_lefts > PARALLEL_LEFT_COUNT {
-        if outstanding_lefts > 0 {
-            let mut my_parens = parens.clone();
-            my_parens[idx] = Parens::Right;
-            scope.spawn(move |s| parens_pairs_helper(s, outstanding_lefts - 1, remaining_lefts, &mut my_parens, idx+1));
-        }
-        if remaining_lefts > 0 {
-            let mut my_parens = parens.clone();
-            my_parens[idx] = Parens::Left;
-            scope.spawn(move |s| parens_pairs_helper(s, outstanding_lefts + 1, remaining_lefts - 1, &mut my_parens, idx+1));
-        }
-    } else {
-        if outstanding_lefts > 0 {
-            parens[idx] = Parens::Right;
-            parens_pairs_helper(scope, outstanding_lefts - 1, remaining_lefts, parens, idx+1);
-        }
-        if remaining_lefts > 0 {
-            parens[idx] = Parens::Left;
-            parens_pairs_helper(scope, outstanding_lefts+1, remaining_lefts - 1, parens, idx+1);
-        }
-    }
-
-}
-fn parens_pairs(n: u64) {
-    let mut str = std::iter::repeat(Parens::None).take(2*n as usize).collect();
-    rayon::scope(|s| {
-        parens_pairs_helper(s, 0, n, &mut str, 0);
-    })
-
+        let mut suffix_array = vec![0; buf.len()];
+        suffix::suffix_array(buf.as_ref(), suffix_array.as_mut());
+    });
+    println!("Hi!");
 }
 
 #[cfg(test)]
