@@ -6,19 +6,16 @@ use rand::Rng;
 
 #[macro_export]
 macro_rules! dbg {
-    ($($var:expr),* ) => {
+    ($first:expr $(, $var:expr)* ) => {{
         #[cfg(debug_assertions)]
         {
-            print!("{}:{}>", file!(), line!());
-            let mut delimeter: Option<char> = None;
+            print!("{}:{}> {}", file!(), line!(), $first);
             $({
-                if let Some(d) = delimeter { print!("{}", d) }
-                print!(" {:?}", $var);
-                delimeter = Some(',');
+                print!(", {:?}", $var);
             })*
             println!();
         }
-    }
+    }}
 }
 
 // Consts
@@ -100,6 +97,15 @@ pub fn bounds_for_num_chunks(data_len: usize, num_chunks: usize) -> Box<[usize]>
 pub fn chunk_mut_slice<T>(slice: &mut [T], chunk_size: usize) -> Box<[&mut [T]]> {
     let len = slice.len();
     multi_split_mut_slice(slice, bounds_for_chunk_size(len, chunk_size).as_ref())
+}
+
+pub fn n_split_mut_slice<T>(slice: &mut [T], n: usize) -> Box<[&mut [T]]> {
+    let len = slice.len();
+    multi_split_mut_slice(slice, bounds_for_num_chunks(len, n).as_ref())
+}
+pub fn n_split_slice<T>(slice: & [T], n: usize) -> Box<[& [T]]> {
+    let len = slice.len();
+    multi_split_slice(slice, bounds_for_num_chunks(len, n).as_ref())
 }
 
 #[cfg(test)]

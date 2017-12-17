@@ -1,3 +1,17 @@
+// Ideas:
+// 1. Ship binarys for Widnows, Mac, and Linux along with test data which
+// we can make available through GitHub's releases section, and can advertise
+// to the class to download and try out during our presentation... we'll want to warn them
+// while we're setting up that they should get their computers out if they want to try our finished
+// project.
+// We also need to give instructions on how to verify the results, that they can use `unzip`
+// to undo the compressed files. We can put full demo instructions in the repo's readme.
+// Hopefully there will be at least a couple people who actually want to try it.
+// 2. We can't cover all the tricks in detail in time. We should f ocus on whats the problem and
+// the central idea.
+// 3. We should cite the 3 main papers we used (1 PLZ77 paper , 2 suffix array papers);
+
+
 #![feature(test)]
 #![feature(associated_type_defaults)]
 
