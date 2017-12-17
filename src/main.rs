@@ -29,7 +29,7 @@ extern crate test;
 
 extern crate core;
 extern crate rayon;
-extern crate suffix;
+extern crate suffix as serial_suffix;
 
 #[macro_use]
 mod utils;
@@ -57,7 +57,7 @@ fn main() {
 
 #[cfg(test)]
 mod suffix_testing {
-    use suffix::SuffixTable;
+    use serial_suffix::SuffixTable;
     #[test]
     fn test_suffix() {
         let st = SuffixTable::new("the quick brown fox was quick.");
