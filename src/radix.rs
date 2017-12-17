@@ -331,6 +331,7 @@ pub fn par_radix_sort<'a, T, G>(data: &'a mut [T], carry: &'a mut [G])
         data.copy_from_slice(data_swap.as_mut_slice());
     }
 }
+
 #[cfg(test)]
 mod test {
     use test;

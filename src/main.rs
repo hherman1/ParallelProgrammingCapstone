@@ -29,6 +29,7 @@ extern crate test;
 
 extern crate core;
 extern crate rayon;
+extern crate suffix;
 
 #[macro_use]
 mod utils;
@@ -54,3 +55,16 @@ fn main() {
     println!("Hi!");
 }
 
+#[cfg(test)]
+mod suffix_testing {
+    use suffix::SuffixTable;
+    #[test]
+    fn test_suffix() {
+        let st = SuffixTable::new("the quick brown fox was quick.");
+        assert_eq!(st.positions("quick"), &[4, 24]);
+
+        // Or if you just want to test existence, this is faster:
+        assert!(st.contains("quick"));
+        assert!(!st.contains("faux"));
+    }
+}
