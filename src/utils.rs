@@ -48,16 +48,6 @@ pub fn random_slice<T: rand::Rand>(len:usize) -> Box<[T]> {
     rng.gen_iter().take(len).collect::<Vec<T>>().into_boxed_slice()
 }
 
-
-
-#[cfg(test)]
-pub fn random_slice_usize(len: usize) -> Box<[usize]> {
-    let mut rng = rand::thread_rng();
-    let mut out = vec![0usize; len].into_boxed_slice();
-    rng.fill_bytes(out.as_mut());
-    out
-}
-
 #[cfg(test)]
 pub fn random_slice_with_zeroes(len: usize) -> Box<[u8]> {
     let mut res = random_slice(len);
@@ -122,6 +112,10 @@ pub fn bounds_for_num_chunks(data_len: usize, num_chunks: usize) -> Box<[usize]>
 pub fn chunk_mut_slice<T>(slice: &mut [T], chunk_size: usize) -> Box<[&mut [T]]> {
     let len = slice.len();
     multi_split_mut_slice(slice, bounds_for_chunk_size(len, chunk_size).as_ref())
+}
+pub fn chunk_slice<T>(slice: & [T], chunk_size: usize) -> Box<[&mut [T]]> {
+    let len = slice.len();
+    multi_split_slice(slice, bounds_for_chunk_size(len, chunk_size).as_ref())
 }
 
 pub fn n_split_mut_slice<T>(slice: &mut [T], n: usize) -> Box<[&mut [T]]> {
