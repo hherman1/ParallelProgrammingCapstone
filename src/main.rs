@@ -15,13 +15,16 @@ extern crate test;
 
 extern crate rayon;
 
+extern crate suffix;
+
 mod radix;
 
 // This is just a plain old parentheses generator.. nothing to see here.. no need to look
 // in the other files. You've seen it all friend. Bye now! Please go!
 // Theres nothing else to see here!
 fn main() {
-    parens_pairs(10);
+    //parens_pairs(10);
+    //test_suffix();
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -82,3 +85,16 @@ fn parens_pairs(n: u64) {
 
 }
 
+#[cfg(test)]
+mod suffix_testing {
+    use suffix::SuffixTable;
+    #[test]
+    fn test_suffix() {
+        let st = SuffixTable::new("the quick brown fox was quick.");
+        assert_eq!(st.positions("quick"), &[4, 24]);
+
+        // Or if you just want to test existence, this is faster:
+        assert!(st.contains("quick"));
+        assert!(!st.contains("faux"));
+    }
+}

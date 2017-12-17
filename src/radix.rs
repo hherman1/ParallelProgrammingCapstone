@@ -191,6 +191,7 @@ pub fn par_radix_sort<'a, T>(data: &'a mut [T])
     radix_recursive_manager_step(data, data_swap.as_mut_slice(), 0,
                                  &mut [0; 16], &mut [0; 16]);
 }
+
 #[cfg(test)]
 mod test {
     use test;
