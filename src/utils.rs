@@ -34,6 +34,14 @@ pub fn random_slice(len: usize) -> Box<[u8]> {
 }
 
 #[cfg(test)]
+pub fn random_slice_usize(len: usize) -> Box<[usize]> {
+    let mut rng = rand::thread_rng();
+    let mut out = vec![0usize; len].into_boxed_slice();
+    rng.fill_bytes(out.as_mut());
+    out
+}
+
+#[cfg(test)]
 pub fn random_slice_with_zeroes(len: usize) -> Box<[u8]> {
     let mut res = random_slice(len);
     res.iter_mut().rev().take(2).for_each(|v| *v = 0);
