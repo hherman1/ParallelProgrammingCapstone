@@ -264,7 +264,7 @@ fn get_right_opt( tree_view: &mut ArrayTreeView<usize>, real_idx: usize, start: 
 
 fn compute_ansv_linear(indices: &[usize], left_nearest_neighbors: &mut[isize], right_nearest_neighbors: &mut [isize], offset: usize) {
     // TODO: Don't use a Vec for this.. use a structure with no bounds checking (its impossible to overflow here).
-    let mut stack = utils::UncheckedFixedSizeStack::<usize>::new(indices.len());
+    let mut unsafe_stack = utils::UncheckedFixedSizeStack::<usize>::new(indices.len());
     // depends on state of stack_vec -- only works in serial
     let mut get_nearest_neighbor = |stack: &mut utils::UncheckedFixedSizeStack<usize>, idx, dest: &mut isize| {
         while stack.len() > 0 && indices[unsafe {*stack.peek()}] > indices[idx] {
@@ -283,9 +283,9 @@ fn compute_ansv_linear(indices: &[usize], left_nearest_neighbors: &mut[isize], r
             stack.push(idx);
         }
     };
-    left_nearest_neighbors.iter_mut().enumerate().for_each(|(idx, val)| get_nearest_neighbor(&mut stack, idx, val));
-    stack.clear();
-    right_nearest_neighbors.iter_mut().enumerate().rev().for_each(|(idx, val)| get_nearest_neighbor(&mut stack,idx, val));
+    left_nearest_neighbors.iter_mut().enumerate().for_each(|(idx, val)| get_nearest_neighbor(&mut unsafe_stack, idx, val));
+    unsafe_stack.clear();
+    right_nearest_neighbors.iter_mut().enumerate().rev().for_each(|(idx, val)| get_nearest_neighbor(&mut unsafe_stack,idx, val));
 }
 
 fn construct_min_search_tree(base: &mut [usize]) -> ArrayTree<usize> {
