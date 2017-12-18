@@ -113,7 +113,7 @@ pub fn chunk_mut_slice<T>(slice: &mut [T], chunk_size: usize) -> Box<[&mut [T]]>
     let len = slice.len();
     multi_split_mut_slice(slice, bounds_for_chunk_size(len, chunk_size).as_ref())
 }
-pub fn chunk_slice<T>(slice: & [T], chunk_size: usize) -> Box<[&mut [T]]> {
+pub fn chunk_slice<T>(slice: & [T], chunk_size: usize) -> Box<[& [T]]> {
     let len = slice.len();
     multi_split_slice(slice, bounds_for_chunk_size(len, chunk_size).as_ref())
 }
