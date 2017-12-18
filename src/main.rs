@@ -13,8 +13,10 @@
 
 
 #![feature(test)]
+#![feature(unique)]
+#![feature(allocator_api)]
 #![feature(associated_type_defaults)]
-#![feature(slice_patterns)]
+
 
 #[cfg(test)]
 #[macro_use]
@@ -68,14 +70,4 @@ mod suffix_testing {
         assert!(st.contains("quick"));
         assert!(!st.contains("faux"));
     }
-}
-#[cfg(test)]
-mod LPF_testing {
-//    use suffix::SuffixTable;
-//    #[test]
-//    fn test_LPF() {
-//        let st = SuffixTable::new("abbaabbbaaabab");
-        //let xs: [i32; 5] = [1, 2, 3, 4, 5];
-//        let LN: [i32, 14] = []
-//    }
 }

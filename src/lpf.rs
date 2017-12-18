@@ -3,7 +3,7 @@ use rayon;
 use utils;
 use std::convert::AsMut;
 
-fn LPF_3(data: &[u8], suffix_array: &[usize], longest_previous_factor: &mut [usize], prev_occ: &mut [isize]) {
+fn lpf_3(data: &[u8], suffix_array: &[usize], longest_previous_factor: &mut [usize], prev_occ: &mut [isize]) {
     let depth :i32 = 10; //Todo: Change this to real value later
     let ar_len = data.len();
 
@@ -94,13 +94,13 @@ fn LPF_3(data: &[u8], suffix_array: &[usize], longest_previous_factor: &mut [usi
 
 
 #[cfg(test)]
-mod LPF_testing {
+mod lpf_testing {
     use utils;
     use rand;
     use rand::*;
     use rayon::prelude::*;
     #[test]
-    fn rustSucks_aLotYoUAredwsxceatgrvefgV5T4FEVENuSinGsnaJeCaSE() {
+    fn changed_this_name_so_idea_would_let_me_commit_thanks_mack_hartley_whose_social_security_number_is_123_45_6789() {
 
         let mut suf_ar = (0usize..32).collect::<Vec<usize>>().into_boxed_slice();
         let mut rng = rand::thread_rng();
@@ -110,7 +110,7 @@ mod LPF_testing {
         let mut lpf = utils::random_slice(32);
         let mut prev_occ = utils::random_slice(32);
 
-        super::LPF_3(data.as_ref(), suf_ar.as_ref(), lpf.as_mut(), prev_occ.as_mut());
+        super::lpf_3(data.as_ref(), suf_ar.as_ref(), lpf.as_mut(), prev_occ.as_mut());
     }
     #[test]
     fn test_rayon_pair_chunks() {

@@ -1,5 +1,6 @@
 use std;
 use rayon;
+use std::heap::Alloc;
 //use core::array::FixedSizeArray;
 
 #[cfg(test)]
@@ -147,31 +148,37 @@ pub fn rayon_chunk_size(slice_len: usize) -> usize {
 }
 
 pub struct UncheckedFixedSizeStack<T> {
-    data_store: Box<[T]>,
-    len: usize,
+    data_store: std::ptr::Unique<T>,
+    len: isize,
 }
 
 impl<T> UncheckedFixedSizeStack<T> {
+    #[inline(always)]
     pub fn new(cap: usize) -> UncheckedFixedSizeStack<T> where T: Default + Clone {
         UncheckedFixedSizeStack {
-            data_store: vec![Default::default(); cap].into_boxed_slice(),
+            data_store: std::heap::Heap.alloc_array(cap).unwrap(),
             len: 0
         }
     }
+    #[inline(always)]
     pub unsafe fn peek(&self) -> &T {
-        self.data_store.get_unchecked(self.len - 1)
+        &*self.data_store.as_ptr().offset(self.len - 1)
     }
+    #[inline(always)]
     pub unsafe fn pop(&mut self) -> &T {
         self.len -= 1;
-        self.data_store.get_unchecked(self.len + 1 - 1)
+        &*self.data_store.as_ptr().offset(self.len - 1)
     }
+    #[inline(always)]
     pub unsafe fn push(&mut self, val: T) {
-        *self.data_store.get_unchecked_mut(self.len) = val;
+        *self.data_store.as_ptr().offset(self.len) = val;
         self.len += 1;
     }
-    pub fn len(&self) -> usize {
+    #[inline(always)]
+    pub fn len(&self) -> isize {
         self.len
     }
+    #[inline(always)]
     pub fn clear(&mut self) {
         self.len = 0;
     }
