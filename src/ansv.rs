@@ -263,9 +263,9 @@ fn get_right_opt( tree_view: &mut ArrayTreeView<usize>, real_idx: usize, start: 
 }
 
 fn compute_ansv_linear(indices: &[usize], left_nearest_neighbors: &mut[isize], right_nearest_neighbors: &mut [isize], offset: usize) {
-    // TODO: Don't use a Vec for this.. use a structure with no bounds checking (its impossible to overflow here).
     let mut unsafe_stack = utils::UncheckedFixedSizeStack::<usize>::new(indices.len());
-    // depends on state of stack_vec -- only works in serial
+
+    // depends on state of stack -- only works in serial
     let mut get_nearest_neighbor = |stack: &mut utils::UncheckedFixedSizeStack<usize>, idx, dest: &mut isize| {
         while stack.len() > 0 && indices[unsafe {*stack.peek()}] > indices[idx] {
             unsafe {
@@ -393,6 +393,28 @@ mod test {
             super::compute_ansv(data.as_mut());
         })
     }
+    #[bench]
+    fn construct_min_search_tree_bench(bench: &mut test::Bencher) {
+        let mut data = (0usize..utils::BENCH_SIZE).collect::<Vec<usize>>().into_boxed_slice();
+        let mut rng = rand::thread_rng();
+        rng.shuffle(data.as_mut());
+        bench.iter(|| {
+            super::construct_min_search_tree(data.as_mut());
+        })
+    }
+    #[bench]
+    fn get_left_opt_bench(bench: &mut test::Bencher) {
+        let mut data = (0usize..utils::BENCH_SIZE).collect::<Vec<usize>>().into_boxed_slice();
+        let mut rng = rand::thread_rng();
+        rng.shuffle(data.as_mut());
+        let tree = super::construct_min_search_tree(data.as_mut());
+        bench.iter(|| {
+            let mut tree_view = super::ArrayTreeView::new(data.as_ref(), &tree);
+            let idx = rng.gen_range::<usize>(0, data.len());
+            super::get_left_opt(&mut tree_view, idx, idx);
+        })
+    }
+
     fn validate_ansv(data: &[usize], lnn: &[isize], rnn: &[isize]) {
         lnn.iter().enumerate().for_each(|(idx, &lnn_idx)| {
             let mut scan_pos : usize;
