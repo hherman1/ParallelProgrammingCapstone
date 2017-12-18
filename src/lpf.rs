@@ -2,6 +2,8 @@ use rayon::prelude::*;
 use rayon;
 use utils;
 use std::convert::AsMut;
+use serial_suffix;
+use ansv;
 
 fn lpf_3(data: &[u8], suffix_array: &[usize], longest_previous_factor: &mut [usize], prev_occ: &mut [isize]) {
     let depth :i32 = 10; //Todo: Change this to real value later
@@ -10,12 +12,9 @@ fn lpf_3(data: &[u8], suffix_array: &[usize], longest_previous_factor: &mut [usi
     let left_elements :Box<[isize]> = vec![0; ar_len].into_boxed_slice();
     let right_elements :Box<[isize]> = vec![0; ar_len].into_boxed_slice();
 
-    let mut left_lpf :Vec<isize> = vec![0isize; ar_len];
-    let mut right_lpf :Vec<isize> = vec![0isize; ar_len];
+    let (mut left_lpf, mut right_lpf) = ansv::compute_ansv(suffix_array);
 
     let mut rank_array  = longest_previous_factor.to_vec().into_boxed_slice(); //todo check HERE. Might not be intended to be a copy
-
-    //compute ansv here. left_elements and right elements will be populated
 
     suffix_array.par_iter().enumerate().for_each(|(i, &data_i) | {
         let rank_ind_unsafe = rank_array.as_ptr() as *mut usize;

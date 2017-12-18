@@ -288,23 +288,33 @@ fn compute_ansv_linear(indices: &[usize], left_nearest_neighbors: &mut[isize], r
     right_nearest_neighbors.iter_mut().enumerate().rev().for_each(|(idx, val)| get_nearest_neighbor(&mut unsafe_stack,idx, val));
 }
 
-fn construct_min_search_tree(base: &mut [usize]) -> ArrayTree<usize> {
+fn construct_min_search_tree(base: &[usize]) -> ArrayTree<usize> {
     let mut min_tree = ArrayTree::<usize>::new(base);
-    let base_len = base.len();
+
+    let mut update_row = |child_row: &[usize], cur_row: &mut[usize]| {
+        let skip_end = if child_row.len() % 2 == 1 {
+            1
+        } else {
+            0
+        };
+        let cur_len = cur_row.len();
+        cur_row.par_iter_mut().enumerate().rev().skip(skip_end).for_each(|(idx, v)| {
+            *v = child_row[left(idx)].min(child_row[right(idx)]);
+        });
+        if skip_end == 1 {
+            *cur_row.last_mut().unwrap() = *child_row.last().unwrap();
+        }
+    };
 
     {
-        let mut tree_view = ArrayTreeViewMut::new(base, &mut min_tree);
+        let depth = min_tree.depth();
+        let mut other_rows = min_tree.layers_mut();
 
-        for d in 1..tree_view.depth() {
-            let m2 = arr_length_at_depth(base_len, d - 1) / 2; //This is how they calculate it.
-            let (table_l, mut sub_table, table_r) = utils::extract_at_mut(tree_view.as_table_mut(), d);
-            sub_table[0..m2].par_iter_mut().enumerate().for_each(|(idx, v)| {
-                *v = table_l.last().unwrap()[left(idx)].min(table_l.last().unwrap()[right(idx)]);
-            });
+        update_row(base, other_rows.first_mut().unwrap().as_mut());
 
-            if arr_length_at_depth(base_len, d - 1) % 2 == 1 { // Is m2 < m?
-                sub_table[m2] = table_l.last().unwrap()[left(m2)];
-            }
+        for d in 2..depth {
+            let (mut before, mut cur, mut after) = utils::extract_at_mut(other_rows, d-1);
+            update_row(before.last().unwrap().as_ref(), cur.as_mut());
         }
     }
 
@@ -448,7 +458,7 @@ mod test {
 
     #[test]
     fn min_search_tree_test() {
-        let mut data = (0usize..utils::DEFAULT_TEST_SIZE).collect::<Vec<usize>>().into_boxed_slice();
+        let mut data = (0usize..utils::DEFAULT_TEST_SIZE+3).collect::<Vec<usize>>().into_boxed_slice();
         let mut rng = rand::thread_rng();
         rng.shuffle(data.as_mut());
         let tree = super::construct_min_search_tree(data.as_mut());
