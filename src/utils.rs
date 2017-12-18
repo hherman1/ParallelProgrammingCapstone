@@ -1,4 +1,6 @@
 use std;
+use rayon;
+//use core::array::FixedSizeArray;
 
 #[cfg(test)]
 use rand;
@@ -11,7 +13,7 @@ macro_rules! dbg {
     ($first:expr $(, $var:expr)* ) => {{
         #[cfg(debug_assertions)]
         {
-            print!("{}:{}> {:?}", file!(), line!(), $first);
+            print!("{}:{}:{}> {:?}", file!(), line!(), column!(), $first);
             $({
                 print!(", {:?}", $var);
             })*
@@ -125,8 +127,53 @@ pub fn n_split_slice<T>(slice: & [T], n: usize) -> Box<[& [T]]> {
     multi_split_slice(slice, bounds_for_num_chunks(len, n).as_ref())
 }
 
-pub struct SyncUnsafeCell<T>(std::cell::UnsafeCell<T>);
-unsafe impl<T> Sync for SyncUnsafeCell<T> {}
+pub fn extract_at<T>(slice: &[T], n:usize) -> (&[T], &T, &[T]) {
+    let len = slice.len();
+    let multis = multi_split_slice(slice, &[n, n+1, len]);
+    (multis[0], &multis[1][0], multis[2])
+}
+pub fn extract_at_mut<T>(slice: &mut [T], n:usize) -> (&mut [T], &mut T, &mut [T]) {
+    let len = slice.len();
+    let (mut left, mut rest) = slice.split_at_mut(n);
+    let (mut mid_arr, mut right) = rest.split_at_mut(1);
+    (left, &mut mid_arr[0], right)
+}
+
+#[inline(always)]
+pub fn rayon_chunk_size(slice_len: usize) -> usize {
+    slice_len/(3*rayon::current_num_threads())
+}
+
+pub struct UncheckedFixedSizeStack<T> {
+    data_store: Box<[T]>,
+    len: usize,
+}
+
+impl<T> UncheckedFixedSizeStack<T> {
+    pub fn new(cap: usize) -> UncheckedFixedSizeStack<T> where T: Default + Clone {
+        UncheckedFixedSizeStack {
+            data_store: vec![Default::default(); cap].into_boxed_slice(),
+            len: 0
+        }
+    }
+    pub unsafe fn peek(&self) -> &T {
+        self.data_store.get_unchecked(self.len - 1)
+    }
+    pub unsafe fn pop(&mut self) -> &T {
+        self.len -= 1;
+        self.data_store.get_unchecked(self.len + 1 - 1)
+    }
+    pub unsafe fn push(&mut self, val: T) {
+        *self.data_store.get_unchecked_mut(self.len) = val;
+        self.len += 1;
+    }
+    pub fn len(&self) -> usize {
+        self.len
+    }
+    pub fn clear(&mut self) {
+        self.len = 0;
+    }
+}
 
 #[cfg(test)]
 mod test {
@@ -146,6 +193,12 @@ mod test {
         })
 
     }
-}
 
+    #[test]
+    fn playground() {
+        let x = vec![0usize; 64].into_boxed_slice();
+        let mut y = x.as_ptr() as *mut usize;
+        dbg!(y);
+    }
+}
 

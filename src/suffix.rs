@@ -183,6 +183,7 @@ fn gen_a_b_offsets_and_b_star_indices<'a>(data: &'a [u8]) -> (Box<[usize]>, Box<
             b_star_indices
         });
 
+
     (Box::new(a_buckets), b_buckets.into_boxed_slice(), b_star_indices)
 }
 

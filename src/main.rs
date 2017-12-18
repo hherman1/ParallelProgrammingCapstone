@@ -14,6 +14,7 @@
 
 #![feature(test)]
 #![feature(associated_type_defaults)]
+#![feature(slice_patterns)]
 
 #[cfg(test)]
 #[macro_use]
