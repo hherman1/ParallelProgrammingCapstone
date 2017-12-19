@@ -33,6 +33,7 @@ extern crate test;
 extern crate core;
 extern crate rayon;
 extern crate suffix as serial_suffix;
+extern crate saxx;
 
 #[macro_use]
 mod utils;
@@ -61,6 +62,9 @@ fn main() {
 #[cfg(test)]
 mod suffix_testing {
     use serial_suffix::SuffixTable;
+    use saxx;
+    use utils;
+    use test;
     #[test]
     fn test_suffix() {
         let st = SuffixTable::new("the quick brown fox was quick.");
@@ -69,5 +73,24 @@ mod suffix_testing {
         // Or if you just want to test existence, this is faster:
         assert!(st.contains("quick"));
         assert!(!st.contains("faux"));
+    }
+    #[bench]
+    fn saxx_bench(bencher: &mut test::Bencher) {
+        let data = utils::random_slice::<u8>(utils::BENCH_SIZE);
+        bencher.iter(|| {
+            saxx::Esaxx::<i64>::esaxx(data.as_ref()).unwrap();
+        })
+    }
+    #[test]
+    fn saxx_test() {
+        let data = utils::random_slice::<u8>(utils::DEFAULT_TEST_SIZE);
+        let esa = saxx::Esaxx::<i32>::esaxx(data.as_ref()).unwrap();
+        let sa = esa.sa.into_boxed_slice();
+
+        sa.iter().enumerate().for_each(|(idx, &el)| {
+            if el < 0 {
+                dbg!(idx, el, data[idx])
+            }
+        });
     }
 }
