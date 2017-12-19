@@ -14,11 +14,14 @@ macro_rules! dbg {
     ($first:expr $(, $var:expr)* ) => {{
         #[cfg(debug_assertions)]
         {
-            print!("{}:{}:{}> {:?}", file!(), line!(), column!(), $first);
+            use ::std::io::Write;
+            let stdout = ::std::io::stdout();
+            let mut lock = stdout.lock();
+            write!(lock, "{}:{}:{}> {:?}", file!(), line!(), column!(), $first);
             $({
-                print!(", {:?}", $var);
+                write!(lock, ", {:?}", $var);
             })*
-            println!();
+            writeln!(lock);
         }
     }}
 }
@@ -43,6 +46,7 @@ macro_rules! generic_izip {
 
 pub const BENCH_SIZE: usize = 65536 * 8;
 pub const DEFAULT_TEST_SIZE: usize = 65536;
+pub const DEFAULT_TEST_SAMPLE_SIZE: usize = 1024;
 
 
 #[cfg(test)]

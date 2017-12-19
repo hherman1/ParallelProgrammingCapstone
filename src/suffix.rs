@@ -296,9 +296,6 @@ mod test {
 
         // Check indices properties
         b_star_indices.par_iter().for_each(|&idx| {
-            if !(data[idx] < data[idx + 1]) {
-                dbg!(idx, data[idx-1], data[idx], data[idx+1])
-            }
             assert!(data[idx] < data[idx + 1]);
         });
         let mut sorted = b_star_indices.clone();
