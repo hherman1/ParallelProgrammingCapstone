@@ -322,7 +322,7 @@ fn construct_min_search_tree(base: &[usize]) -> ArrayTree<usize> {
 
 }
 
-pub fn compute_ansv(indices: &mut [usize]) -> (Box<[isize]>, Box<[isize]>) {
+pub fn compute_ansv(indices: &[usize]) -> (Box<[isize]>, Box<[isize]>) {
     let indices_len = indices.len();
 
     let mut left_nearest_neighbors = vec![0isize; indices_len].into_boxed_slice();

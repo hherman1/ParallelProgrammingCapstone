@@ -5,30 +5,33 @@ use std::convert::AsMut;
 use serial_suffix;
 use ansv;
 
-fn lpf_3(data: &[u8], suffix_array: &[usize], longest_previous_factor: &mut [usize], prev_occ: &mut [isize]) {
+fn lpf_3(data: &[u8], suffix_array: &[usize]) -> (Box<[usize]>, Box<[isize]>) {
     let depth :i32 = 10; //Todo: Change this to real value later
     let ar_len = data.len();
 
-    let left_elements :Box<[isize]> = vec![0; ar_len].into_boxed_slice();
-    let right_elements :Box<[isize]> = vec![0; ar_len].into_boxed_slice();
+    let mut longest_previous_factor = vec![0usize; ar_len].into_boxed_slice();
+    let mut prev_occ = vec![0isize; ar_len].into_boxed_slice();
 
-    let (mut left_lpf, mut right_lpf) = ansv::compute_ansv(suffix_array);
 
-    let mut rank_array  = longest_previous_factor.to_vec().into_boxed_slice(); //todo check HERE. Might not be intended to be a copy
+    let (mut left_elements, mut right_elements) = ansv::compute_ansv(suffix_array);
 
-    suffix_array.par_iter().enumerate().for_each(|(i, &data_i) | {
-        let rank_ind_unsafe = rank_array.as_ptr() as *mut usize;
+    let mut left_lpf :Box<[isize]> = vec![0; ar_len].into_boxed_slice();
+    let mut right_lpf :Box<[isize]> = vec![0; ar_len].into_boxed_slice();
+
+    let mut rank_array = longest_previous_factor;
+    suffix_array.par_iter().enumerate().for_each(|(i, &data_i)| {
         unsafe {
-            *rank_ind_unsafe.offset(data_i as isize) = i;
+            *(rank_array.as_ptr() as *mut usize).offset(data_i as isize) = i;
         }
     });
 
+    let mut longest_previous_factor = rank_array;
+
+
     let num_threads = 2 * rayon::current_num_threads(); // Figure out why paper multiplies this by 2 here
 
-    let size = (ar_len + num_threads - 1) / num_threads;
+    let size = utils::rayon_chunk_size(ar_len);
 
-//    let x = left_lpf.as_mut_slice();
-//    let y = x.par_chunks_mut();
 
     generic_izip!(
         longest_previous_factor.as_mut().par_chunks_mut(size),
@@ -41,10 +44,12 @@ fn lpf_3(data: &[u8], suffix_array: &[usize], longest_previous_factor: &mut [usi
 
             let mut abs_start_pos :usize = idx * lpf_chunk.len();
 
+            let rank = *lpf_chunk.first().unwrap();
+
             //Compute lpf for first element
-            let mid :usize = rank_array[abs_start_pos];
-            let left :isize = left_elements[rank_array[abs_start_pos]];
-            let right :isize = right_elements[rank_array[abs_start_pos]];
+            let mid :usize = rank;
+            let left :isize = left_elements[rank];
+            let right :isize = right_elements[rank];
 
             let mut llcp = 0;
             let mut rlcp = 0;
@@ -83,6 +88,8 @@ fn lpf_3(data: &[u8], suffix_array: &[usize], longest_previous_factor: &mut [usi
 
         });
 
+    (longest_previous_factor, prev_occ)
+
 }
 
 
@@ -98,18 +105,23 @@ mod lpf_testing {
     use rand;
     use rand::*;
     use rayon::prelude::*;
+    use serial_suffix;
+    use saxx;
     #[test]
     fn changed_this_name_so_idea_would_let_me_commit_thanks_mack_hartley_whose_social_security_number_is_123_45_6789() {
+        let data = utils::random_slice(utils::DEFAULT_TEST_SIZE);
+        let esa = saxx::Esaxx::<i64>::esaxx(data).unwrap();
+        let sa = esa.sa.into_boxed_slice();
+        let sa = sa.iter().map(|&v| {
+            v as usize
+        }).collect::<Vec<usize>>().into_boxed_slice();
+
+
+        //        serial_suffix::SuffixTable::new(data);
 
         let mut suf_ar = (0usize..32).collect::<Vec<usize>>().into_boxed_slice();
-        let mut rng = rand::thread_rng();
-        rng.shuffle(suf_ar.as_mut());
 
-        let data = utils::random_slice(32);
-        let mut lpf = utils::random_slice(32);
-        let mut prev_occ = utils::random_slice(32);
-
-        super::lpf_3(data.as_ref(), suf_ar.as_ref(), lpf.as_mut(), prev_occ.as_mut());
+        super::lpf_3(data.as_ref(), suf_ar.as_ref());
     }
     #[test]
     fn test_rayon_pair_chunks() {
