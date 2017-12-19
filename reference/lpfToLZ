@@ -104,4 +104,4 @@ pair< pair<intT, intT>*, intT> ParallelLPFtoLZ(intT *lpf, intT *prev_occ, intT n
   return make_pair(lz, m);
 }
 
-//Methods they use: make_pair, std::swap, sequence::scan, getDepth
+//Methods they use: make_pair, std::swap, sequence::scan, getDepth, cflog
