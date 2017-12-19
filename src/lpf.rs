@@ -47,7 +47,7 @@ fn get_lcp(l: &[u8], r: &[u8]) -> usize {
 // that same suffix will produce LPF - 1 characters for us.. that may be slightly confusing.
 
 fn lpf_3(data: &[u8], suffix_array: &[usize]) -> (Box<[usize]>, Box<[isize]>) {
-    let depth :i32 = 10; //Todo: Change this to real value later
+
     let ar_len = data.len();
 
     let mut longest_previous_factor = vec![0usize; ar_len].into_boxed_slice();
@@ -202,3 +202,4 @@ mod lpf_testing {
 
     }
 }
+
