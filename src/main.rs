@@ -42,7 +42,6 @@ mod radix;
 mod suffix;
 mod ansv;
 mod lpf;
-mod depth;
 
 use std::io::Read;
 
