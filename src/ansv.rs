@@ -332,10 +332,10 @@ pub fn compute_ansv(indices: &[usize]) -> (Box<[isize]>, Box<[isize]>) {
 
     let chunk_size = utils::rayon_chunk_size(indices_len);
 
-    generic_izip!(indices.par_chunks(chunk_size),
-        left_nearest_neighbors.par_chunks_mut(chunk_size),
-        right_nearest_neighbors.par_chunks_mut(chunk_size)).enumerate().for_each(
-        |(idx, (indices_chunk, lnn_chunk, rnn_chunk)): (usize, (&[usize], &mut [isize], &mut [isize]))| {
+    generic_izip!(indices.par_chunks(chunk_size), left_nearest_neighbors.par_chunks_mut(chunk_size), right_nearest_neighbors.par_chunks_mut(chunk_size))
+        .enumerate()
+        .for_each( |(idx, (indices_chunk, lnn_chunk, rnn_chunk)): (usize, (&[usize], &mut [isize], &mut [isize]))| {
+
             let mut tree_view = ArrayTreeView::new(indices, &min_tree);
 
             compute_ansv_linear(indices_chunk, lnn_chunk, rnn_chunk, idx * chunk_size);
@@ -505,10 +505,12 @@ mod test {
         let mut rnn = vec![0isize; data.len()].into_boxed_slice();
 
         let chunk_size = utils::rayon_chunk_size(data.len());
+
         generic_izip!(data.par_chunks(chunk_size), lnn.par_chunks_mut(chunk_size), rnn.par_chunks_mut(chunk_size)).enumerate()
             .for_each(|(cid, (data_chunk, lnn_chunk, rnn_chunk))| {
                 super::compute_ansv_linear(data_chunk, lnn_chunk, rnn_chunk,chunk_size * cid);
             });
+
         generic_izip!(data.chunks(chunk_size), lnn.chunks(chunk_size), rnn.chunks(chunk_size)).enumerate()
             .for_each(|(cid, (data_chunk, lnn_chunk, rnn_chunk))| {
                 let lnn_fixed = lnn_chunk.iter().map(|&val| {
