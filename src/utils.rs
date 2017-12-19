@@ -105,12 +105,16 @@ pub fn multi_split_slice<'a, T>(slice: &'a [T], bounds: &[usize]) -> Box<[&'a [T
     out.into_boxed_slice()
 }
 
+pub fn calc_n_chunks(data_len: usize, chunk_size: usize) -> usize {
+    ((data_len as f64)/(chunk_size as f64)).ceil() as usize
+}
+
 pub fn bounds_for_num_chunks_and_chunk_size(data_len: usize, chunk_size: usize, n_chunks: usize) -> Box<[usize]> {
     (0usize..n_chunks).map(|bound| ((bound+1)*chunk_size).min(data_len))
         .collect::<Vec<usize>>().into_boxed_slice()
 }
 pub fn bounds_for_chunk_size(data_len: usize, chunk_size: usize) -> Box<[usize]> {
-    bounds_for_num_chunks_and_chunk_size(data_len, chunk_size,((data_len as f64)/(chunk_size as f64)).ceil() as usize)
+    bounds_for_num_chunks_and_chunk_size(data_len, chunk_size, calc_n_chunks(data_len, chunk_size))
 }
 pub fn bounds_for_num_chunks(data_len: usize, num_chunks: usize) -> Box<[usize]> {
     bounds_for_num_chunks_and_chunk_size(data_len,((data_len as f64)/(num_chunks as f64)).ceil() as usize, num_chunks)
@@ -209,9 +213,6 @@ mod test {
 
     #[test]
     fn playground() {
-        let x = vec![0usize; 64].into_boxed_slice();
-        let mut y = x.as_ptr() as *mut usize;
-        dbg!(y);
     }
 }
 

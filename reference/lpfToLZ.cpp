@@ -24,14 +24,13 @@
 
 #include <cstdio>
 #include <iostream>
-#include "Base.h"
-#include "sequence.h"
-#include "parallel.h"
 
 using namespace std;
 
 //this module is share by others
 //not test for n < 8
+
+typedef intT long;
 
 pair< pair<intT, intT>*, intT> ParallelLPFtoLZ(intT *lpf, intT *prev_occ, intT n) {
   intT l2 = cflog2(n);
@@ -54,28 +53,31 @@ pair< pair<intT, intT>*, intT> ParallelLPFtoLZ(intT *lpf, intT *prev_occ, intT n
   intT *sflag = new intT[sn + 1];
 
   //build the sub tree
+  // This explores the pointer array and if any block lands on any other block it stores that.. if it doesn't it stores that too.
   parallel_for (intT i = 0; i < sn; i ++) {
     intT j;
     for (j = pointers[i * l2]; j % l2 && j != n; j = pointers[j]) ;
-    if (j == n) next[i] = sn;
-    else next[i] = j / l2;
-    sflag[i] = 0;
+//    j followed the pointers either all the way to the end or it hit the end of its block on the nose
+    if (j == n) next[i] = sn; // If it hit the end then next[i] is the number of blocks -- next.len() - 1
+    else next[i] = j / l2; // otherwise next[i] is j / log(n) .. in this case we know j is divisible by l2 by our luck -- this will be the block
+    // j stumbled upon the start of.
+    sflag[i] = 0; // This is irrelevant
   }
 
   next[sn] = next2[sn] = sn;
   sflag[0] = 1; sflag[sn] = 0;
 
   //point jump
-  intT dep = getDepth(sn); ;
+  intT dep = getDepth(sn); ; // If we build a binary tree out of next, next2, or sflag, how many layers would it have?
   for (intT d = 0; d < dep; d++) {
     parallel_for(intT i = 0; i < sn; i ++) {
-      intT j = next[i];
-      if (sflag[i] == 1) {
+      intT j = next[i]; // this is a pointer to another block in the next array - very easily could be the last block.
+      if (sflag[i] == 1) { // if this block is marked to be included, mark the block it points to as included also.. race condition?
         sflag[j] = 1;
       }
-      next2[i] = next[j];
+      next2[i] = next[j]; // next2 points to the block the block this block points to points to.. its the next step in the process
     }
-    std::swap(next, next2);
+    std::swap(next, next2); // Advance everything in next to the block it points to
   }
 
   //filling the result

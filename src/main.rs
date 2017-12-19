@@ -34,6 +34,10 @@ extern crate core;
 extern crate rayon;
 extern crate suffix as serial_suffix;
 extern crate saxx;
+extern crate clap;
+
+#[macro_use]
+extern crate lazy_static;
 
 #[macro_use]
 mod utils;
@@ -42,21 +46,140 @@ mod radix;
 mod suffix;
 mod ansv;
 mod lpf;
+mod lpf_to_lz;
 
 use std::io::Read;
 
-fn main() {
-    let args = std::env::args();
-    args.skip(1).for_each(|arg| {
-        let mut f = std::fs::File::open(std::path::Path::new(&arg)).unwrap();
-        let mut buf = Vec::with_capacity(f.metadata().unwrap().len() as usize);
-        f.read_to_end(&mut buf).unwrap();
-        println!("{} [{}]> {:?}", arg, buf.len(), &buf[0..10]);
+use rayon::prelude::*;
 
-        let mut suffix_array = vec![0; buf.len()];
-        suffix::suffix_array(buf.as_ref(), suffix_array.as_mut());
-    });
-    println!("Hi!");
+use std::sync::Mutex;
+use std::collections::HashMap;
+lazy_static! {
+    static ref STATS : Mutex<HashMap<&'static str, f64>> = {
+        let mut hash = HashMap::new();
+        Mutex::new(hash)
+    };
+}
+
+fn float_secs(d: std::time::Duration) -> f64 {
+    (d.as_secs() as f64) + (d.subsec_nanos() as f64)/1e9f64
+}
+
+// Updates time and returns elapsed time ... difference between old and new.
+fn tick(time: &mut std::time::Instant) -> std::time::Duration {
+    let new_time = std::time::Instant::now();
+    let res = new_time - *time;
+    *time = new_time;
+    res
+}
+
+fn lempel_ziv_77(data: &[u8]) -> Box<[usize]> {
+    let mut time = std::time::Instant::now();
+
+    let esa = saxx::Esaxx::<i64>::esaxx(data.as_ref()).unwrap();
+
+    STATS.lock().unwrap().insert("esa_runtime", float_secs(tick(&mut time)));
+
+    let sa = esa.sa.into_boxed_slice();
+    let sa = sa.iter().map(|&v| {
+        v as usize
+    }).collect::<Vec<usize>>().into_boxed_slice();
+
+    let (left_elements, right_elements) = ansv::compute_ansv(sa.as_ref());
+
+    STATS.lock().unwrap().insert("ansv_runtime", float_secs(tick(&mut time)));
+
+    let (lpf, prev_occ) = lpf::lpf_3(data.as_ref(), sa.as_ref(), left_elements.as_ref(), right_elements.as_ref());
+
+    STATS.lock().unwrap().insert("lpf_runtime", float_secs(tick(&mut time)));
+
+    let out = lpf_to_lz::lpf_to_lz_serial(lpf.as_ref());
+
+    STATS.lock().unwrap().insert("lpf_to_lz_runtime", float_secs(tick(&mut time)));
+
+    out
+
+}
+
+fn main() {
+    let matches = clap::App::new("gRip 2.X: Parallel Lempel-Ziv 77 Implementation")
+        .version("0.0.0.0.0.0.1")
+        .author("Mack Hartley & Hunter Herman")
+        .about("Calculates Lempel Ziv factorization, and reports info about it.")
+        .arg(clap::Arg::with_name("print")
+            .short("p")
+            .help("Print the final Lempel-Ziv factorization."))
+        .arg(clap::Arg::with_name("stats")
+            .short("s")
+            .multiple(true)
+            .help("Print stats about the factorization."))
+        .arg(clap::Arg::with_name("INPUT")
+            .required(true)
+            .index(1)
+            .help("Sets the file to factorize."))
+        .arg(clap::Arg::with_name("n-threads")
+            .short("np")
+            .help("Sets the number of threads to calculate with.")
+            .takes_value(true)
+            .long("num-threads"))
+        .get_matches();
+
+
+    let filename = matches.value_of("INPUT").unwrap();
+    let stats_level = matches.occurrences_of("stats");
+    let should_print = matches.is_present("print");
+    let num_threads_opt = matches.value_of("n-threads");
+
+
+    let start = std::time::Instant::now();
+
+    let mut f = std::fs::File::open(std::path::Path::new(&filename)).unwrap();
+    let mut buf = Vec::with_capacity(f.metadata().unwrap().len() as usize);
+    f.read_to_end(&mut buf).unwrap();
+
+
+    let lz = match num_threads_opt {
+        Some(num_threads_str) => {
+            let num_threads: usize = num_threads_str.parse().unwrap();
+
+            let tp = rayon::Configuration::new()
+                .num_threads(num_threads)
+                .build().unwrap();
+
+            tp.install(|| lempel_ziv_77(buf.as_ref()))
+        }
+        None => lempel_ziv_77(buf.as_ref())
+    };
+
+    let total_run_time = std::time::Instant::now() - start;
+
+    println!("<FINISHED>");
+    if stats_level > 0 {
+        println!("Compressed {} bytes in {}s.", buf.len(), float_secs(total_run_time));
+
+        if stats_level > 1 {
+            println!("-- Finished phase `{}` in {}s", "Suffix Array", STATS.lock().unwrap().get("esa_runtime").unwrap_or(&-1f64));
+            println!("-- Finished phase `{}` in {}s", "ANSV Arrays", STATS.lock().unwrap().get("ansv_runtime").unwrap_or(&-1f64));
+            println!("-- Finished phase `{}` in {}s", "LPF Array", STATS.lock().unwrap().get("lpf_runtime").unwrap_or(&-1f64));
+            println!("-- Finished phase `{}` in {}s", "LPF Array To LZ Array", STATS.lock().unwrap().get("lpf_to_lz_runtime").unwrap_or(&-1f64));
+            println!();
+        }
+
+        println!("Approximate output length: {}", lz.len());
+        println!("Approximate reduction ratio: {}", (buf.len() as f64)/(lz.len() as f64));
+    }
+    if stats_level > 1 {
+        let average_reduction_factor = (lz.par_iter().zip(lz.par_iter().skip(1))
+            .map(|(&l, &r)| r - l).sum::<usize>() as f64)/(lz.len() as f64 - 1f64);
+        println!("Average pattern length: {}", average_reduction_factor);
+    }
+     if should_print {
+         println!("<FACTORIZATION>");
+         println!();
+         println!("{:?}", lz);
+
+     }
+
 }
 
 #[cfg(test)]
@@ -87,10 +210,13 @@ mod suffix_testing {
         let esa = saxx::Esaxx::<i32>::esaxx(data.as_ref()).unwrap();
         let sa = esa.sa.into_boxed_slice();
 
-        sa.iter().enumerate().for_each(|(idx, &el)| {
-            if el < 0 {
-                dbg!(idx, el, data[idx])
-            }
-        });
+    }
+
+    #[bench]
+    fn lempel_ziv_77_bench(bencher: &mut test::Bencher) {
+        let data = utils::random_slice::<u8>(utils::BENCH_SIZE);
+        bencher.iter(|| {
+            super::lempel_ziv_77(data.as_ref());
+        })
     }
 }

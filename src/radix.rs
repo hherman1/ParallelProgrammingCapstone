@@ -1,4 +1,4 @@
-
+use utils;
 use rayon::prelude::*;
 use std;
 
@@ -187,8 +187,7 @@ where T:'a + self::Radix + Copy + Sync + std::fmt::Debug,
 
     let elements_received = data.len();
 
-    let batches =  (elements_received as f64/ batch_size as f64).ceil() as usize;
-
+    let batches =  utils::calc_n_chunks(elements_received, batch_size);
 
     // Writing anything but `true` here (such as the commented condition following it)
    if true { //batches <= parallel_batch_count {

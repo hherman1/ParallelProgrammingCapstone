@@ -46,14 +46,13 @@ fn get_lcp(l: &[u8], r: &[u8]) -> usize {
 // suffix - 1, since its composed of the same letters shy of the first one, so that whatever the previous suffix's LPF suffix was,
 // that same suffix will produce LPF - 1 characters for us.. that may be slightly confusing.
 
-fn lpf_3(data: &[u8], suffix_array: &[usize]) -> (Box<[usize]>, Box<[isize]>) {
+pub fn lpf_3(data: &[u8], suffix_array: &[usize], left_elements: &[isize], right_elements: &[isize]) -> (Box<[usize]>, Box<[isize]>) {
 
     let ar_len = data.len();
 
     let mut longest_previous_factor = vec![0usize; ar_len].into_boxed_slice();
     let mut prev_occ = vec![0isize; ar_len].into_boxed_slice();
 
-    let (mut left_elements, mut right_elements) = ansv::compute_ansv(suffix_array);
 
     let mut rank_array = longest_previous_factor;
     suffix_array.par_iter().enumerate().for_each(|(i, &data_i)| {
@@ -64,10 +63,7 @@ fn lpf_3(data: &[u8], suffix_array: &[usize]) -> (Box<[usize]>, Box<[isize]>) {
 
     let mut longest_previous_factor = rank_array;
 
-    let num_threads = 2 * rayon::current_num_threads(); // Figure out why paper multiplies this by 2 here
-
     let size = utils::rayon_chunk_size(ar_len);
-
 
     longest_previous_factor.as_mut().par_chunks_mut(size).zip(prev_occ.as_mut().par_chunks_mut(size))
         .enumerate()
@@ -110,9 +106,6 @@ fn lpf_3(data: &[u8], suffix_array: &[usize]) -> (Box<[usize]>, Box<[isize]>) {
                          *prev_occ_chunk_el = suffix_array[right as usize] as isize;
                          *lpf_chunk_el = rlcp;
                      }
-//                     if *lpf_chunk_el > 10 {
-//                         dbg!(*lpf_chunk_el, rlcp, llcp, prev_llcp, prev_rlcp);
-//                     }
 
                      (llcp, rlcp)
                  });
@@ -128,6 +121,7 @@ mod lpf_testing {
     use rayon::prelude::*;
     use serial_suffix;
     use saxx;
+    use ansv;
     use test;
 
     #[bench]
@@ -139,8 +133,10 @@ mod lpf_testing {
             v as usize
         }).collect::<Vec<usize>>().into_boxed_slice();
 
+        let (left_elements, right_elements) = ansv::compute_ansv(sa.as_ref());
+
         bencher.iter(|| {
-            super::lpf_3(data.as_ref(), sa.as_ref());
+            super::lpf_3(data.as_ref(), sa.as_ref(), left_elements.as_ref(), right_elements.as_ref());
         });
 
     }
@@ -154,9 +150,9 @@ mod lpf_testing {
             v as usize
         }).collect::<Vec<usize>>().into_boxed_slice();
 
-        let (lpf, prev_occ) = super::lpf_3(data.as_ref(), sa.as_ref());
+        let (left_elements, right_elements) = ansv::compute_ansv(sa.as_ref());
 
-        dbg!("Checking results...");
+        let (lpf, prev_occ) = super::lpf_3(data.as_ref(), sa.as_ref(), left_elements.as_ref(), right_elements.as_ref());
 
         lpf.par_iter().zip(prev_occ.par_iter()).enumerate().for_each(|(idx, (&lpf_val, &prev_occ_idx))| {
             if prev_occ_idx != -1 {

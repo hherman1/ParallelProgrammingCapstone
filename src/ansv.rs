@@ -435,9 +435,6 @@ mod test {
                 scan_pos = 0;
             }
             data[scan_pos..idx].iter().enumerate().for_each(|(bv_idx, &between_value)| {
-                if data[idx] > between_value {
-                    dbg!(idx, lnn_idx, bv_idx, data[idx], data[lnn_idx as usize], between_value);
-                }
                 assert!(data[idx] <= between_value);
             })
         });
