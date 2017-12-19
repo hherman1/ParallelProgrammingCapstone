@@ -6,8 +6,10 @@ use serial_suffix;
 use ansv;
 
 fn lpf_3(data: &[u8], suffix_array: &[usize]) -> (Box<[usize]>, Box<[isize]>) {
-    let depth :i32 = 10; //Todo: Change this to real value later
+
     let ar_len = data.len();
+
+    let depth :i32 = getDpeth(ar_len);
 
     let mut longest_previous_factor = vec![0usize; ar_len].into_boxed_slice();
     let mut prev_occ = vec![0isize; ar_len].into_boxed_slice();
@@ -95,48 +97,59 @@ fn lpf_3(data: &[u8], suffix_array: &[usize]) -> (Box<[usize]>, Box<[isize]>) {
 
 
 
-
-
-
-
-#[cfg(test)]
-mod lpf_testing {
-    use utils;
-    use rand;
-    use rand::*;
-    use rayon::prelude::*;
-    use serial_suffix;
-    use saxx;
-    #[test]
-    fn changed_this_name_so_idea_would_let_me_commit_thanks_mack_hartley_whose_social_security_number_is_123_45_6789() {
-        let data = utils::random_slice(utils::DEFAULT_TEST_SIZE);
-        let esa = saxx::Esaxx::<i64>::esaxx(data).unwrap();
-        let sa = esa.sa.into_boxed_slice();
-        let sa = sa.iter().map(|&v| {
-            v as usize
-        }).collect::<Vec<usize>>().into_boxed_slice();
-
-
-        //        serial_suffix::SuffixTable::new(data);
-
-        let mut suf_ar = (0usize..32).collect::<Vec<usize>>().into_boxed_slice();
-
-        super::lpf_3(data.as_ref(), suf_ar.as_ref());
+pub fn getDpeth(num: usize) -> usize {
+    let mut a = 0;
+    let mut b = num - 1;
+    while b > 0 {
+        b = b >> 1;
+        a = a + 1;
     }
-    #[test]
-    fn test_rayon_pair_chunks() {
-        let data = utils::random_slice::<usize>(utils::DEFAULT_TEST_SIZE);
-        for chunk_size in 32..256 {
-            data.as_ref().par_chunks(chunk_size).enumerate().for_each(|(idx, chunk) | {
-
-                if chunk.len() != chunk_size {
-                    assert_eq!(data.last(), chunk.last());
-                    assert_eq!(idx, (data.len() + chunk_size - 1)/chunk_size - 1);
-                } else {
-                    assert_eq!(chunk.len(), chunk_size);
-                }
-            })
-        }
-
-    }
+    a = a + 1;
+    a
 }
+
+
+
+
+
+//#[cfg(test)]
+//mod lpf_testing {
+//    use utils;
+//    use rand;
+//    use rand::*;
+//    use rayon::prelude::*;
+//    use serial_suffix;
+//    use saxx;
+//    #[test]
+//    fn changed_this_name_so_idea_would_let_me_commit_thanks_mack_hartley_whose_social_security_number_is_123_45_6789() {
+//        let data = utils::random_slice(utils::DEFAULT_TEST_SIZE);
+//        let esa = saxx::Esaxx::<i64>::esaxx(data).unwrap();
+//        let sa = esa.sa.into_boxed_slice();
+//        let sa = sa.iter().map(|&v| {
+//            v as usize
+//        }).collect::<Vec<usize>>().into_boxed_slice();
+//
+//
+//        //        serial_suffix::SuffixTable::new(data);
+//
+//        let mut suf_ar = (0usize..32).collect::<Vec<usize>>().into_boxed_slice();
+//
+//        super::lpf_3(data.as_ref(), suf_ar.as_ref());
+//    }
+//    #[test]
+//    fn test_rayon_pair_chunks() {
+//        let data = utils::random_slice::<usize>(utils::DEFAULT_TEST_SIZE);
+//        for chunk_size in 32..256 {
+//            data.as_ref().par_chunks(chunk_size).enumerate().for_each(|(idx, chunk) | {
+//
+//                if chunk.len() != chunk_size {
+//                    assert_eq!(data.last(), chunk.last());
+//                    assert_eq!(idx, (data.len() + chunk_size - 1)/chunk_size - 1);
+//                } else {
+//                    assert_eq!(chunk.len(), chunk_size);
+//                }
+//            })
+//        }
+//
+//    }
+//}

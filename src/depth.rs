@@ -14,6 +14,6 @@ mod depth_test {
     use utils;
     #[test]
     fn OhNORuSTdOeSNtSucKOhWaITItDoeS() {
-        super::getDpeth(32);
+        dbg!(super::getDpeth(32));
     }
 }
