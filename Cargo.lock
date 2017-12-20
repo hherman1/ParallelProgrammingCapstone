@@ -153,6 +153,7 @@ dependencies = [
 name = "parallel_lz77"
 version = "0.1.0"
 dependencies = [
+ "ansi_term 0.10.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 2.29.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "quickcheck 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",

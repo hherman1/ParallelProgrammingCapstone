@@ -79,9 +79,6 @@ pub fn lpf_3(data: &[u8], suffix_array: &[usize], left_elements: &[isize], right
                      let left = left_elements[rank];
                      let right = right_elements[rank];
 
-                     assert!(left >= -1);
-                     assert!(right >= -1);
-
                      let mut llcp: usize = if left != -1 {
                          let min_cur_llpc_val = (prev_llcp as isize - 1).max(0) as usize;
                          min_cur_llpc_val + get_lcp(&data[suffix_array[left as usize] + min_cur_llpc_val ..], &data[abs_start_pos + min_cur_llpc_val..])

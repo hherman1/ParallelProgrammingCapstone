@@ -25,6 +25,7 @@ extern crate quickcheck;
 #[cfg(test)]
 extern crate rand;
 
+extern crate ansi_term;
 
 
 #[cfg(test)]
@@ -54,6 +55,8 @@ use rayon::prelude::*;
 
 use std::sync::Mutex;
 use std::collections::HashMap;
+
+use std::marker::{Send, Sync};
 lazy_static! {
     static ref STATS : Mutex<HashMap<&'static str, f64>> = {
         let mut hash = HashMap::new();
@@ -73,12 +76,12 @@ fn tick(time: &mut std::time::Instant) -> std::time::Duration {
     res
 }
 
-fn lempel_ziv_77(data: &[u8]) -> Box<[usize]> {
+fn lempel_ziv_77(data: &[u8]) -> Result<(Box<[usize]>, Box<[isize]>), Box<std::error::Error>> {
     let mut time = std::time::Instant::now();
 
-    let esa = saxx::Esaxx::<i64>::esaxx(data.as_ref()).unwrap();
+    let esa = saxx::Esaxx::<i64>::esaxx(data.as_ref()).unwrap_or_else(|e| panic!("Suffix array generation failed with code {}.", e));
 
-    STATS.lock().unwrap().insert("esa_runtime", float_secs(tick(&mut time)));
+    STATS.lock()?.insert("esa_runtime", float_secs(tick(&mut time)));
 
     let sa = esa.sa.into_boxed_slice();
     let sa = sa.iter().map(|&v| {
@@ -87,22 +90,24 @@ fn lempel_ziv_77(data: &[u8]) -> Box<[usize]> {
 
     let (left_elements, right_elements) = ansv::compute_ansv(sa.as_ref());
 
-    STATS.lock().unwrap().insert("ansv_runtime", float_secs(tick(&mut time)));
+    STATS.lock()?.insert("ansv_runtime", float_secs(tick(&mut time)));
 
     let (lpf, prev_occ) = lpf::lpf_3(data.as_ref(), sa.as_ref(), left_elements.as_ref(), right_elements.as_ref());
 
-    STATS.lock().unwrap().insert("lpf_runtime", float_secs(tick(&mut time)));
+    STATS.lock()?.insert("lpf_runtime", float_secs(tick(&mut time)));
 
     let out = lpf_to_lz::lpf_to_lz_serial(lpf.as_ref());
 
-    STATS.lock().unwrap().insert("lpf_to_lz_runtime", float_secs(tick(&mut time)));
+    STATS.lock()?.insert("lpf_to_lz_runtime", float_secs(tick(&mut time)));
 
-    out
+    Ok((out, prev_occ))
 
 }
 
 fn main() {
-    let matches = clap::App::new("gRip 2.X: Parallel Lempel-Ziv 77 Implementation")
+    ansi_term::enable_ansi_support();
+
+    let mut app = clap::App::new("gRip 2.X: Parallel Lempel-Ziv 77 Implementation")
         .version("0.0.0.0.0.0.1")
         .author("Mack Hartley & Hunter Herman")
         .about("Calculates Lempel Ziv factorization, and reports info about it.")
@@ -121,64 +126,72 @@ fn main() {
             .short("np")
             .help("Sets the number of threads to calculate with.")
             .takes_value(true)
-            .long("num-threads"))
-        .get_matches();
+            .long("num-threads"));
 
+    let matches = app.get_matches();
 
     let filename = matches.value_of("INPUT").unwrap();
     let stats_level = matches.occurrences_of("stats");
     let should_print = matches.is_present("print");
-    let num_threads_opt = matches.value_of("n-threads");
+    let num_threads_opt = matches.value_of("n-threads").map(|s| s.parse::<usize>());
+
+    let x: Result<(), Box<std::error::Error>> = (|| {
 
 
-    let start = std::time::Instant::now();
+        let start = std::time::Instant::now();
 
-    let mut f = std::fs::File::open(std::path::Path::new(&filename)).unwrap();
-    let mut buf = Vec::with_capacity(f.metadata().unwrap().len() as usize);
-    f.read_to_end(&mut buf).unwrap();
+        let mut f = std::fs::File::open(std::path::Path::new(&filename))?;
+        let mut buf = Vec::with_capacity(f.metadata().unwrap().len() as usize);
+        f.read_to_end(&mut buf)?;
 
 
-    let lz = match num_threads_opt {
-        Some(num_threads_str) => {
-            let num_threads: usize = num_threads_str.parse().unwrap();
+        let (lz, prev_occ) = match num_threads_opt {
+            Some(num_threads_parse) => {
 
-            let tp = rayon::Configuration::new()
-                .num_threads(num_threads)
-                .build().unwrap();
+                let tp = rayon::Configuration::new()
+                    .num_threads(num_threads_parse?)
+                    .build()?;
 
-            tp.install(|| lempel_ziv_77(buf.as_ref()))
+                tp.install(|| lempel_ziv_77(buf.as_ref()).map_err(|box_err| box_err.to_string()))?
+            }
+            None => lempel_ziv_77(buf.as_ref())?
+        };
+
+        let total_run_time = std::time::Instant::now() - start;
+
+        println!("{}", ansi_term::Color::Green.paint("<FINISHED>"));
+        if stats_level > 0 {
+            println!("Compressed {} bytes in {}s.", buf.len(), float_secs(total_run_time));
+
+            if stats_level > 1 {
+                println!("-- Finished phase `{}` in {}s", "Suffix Array", STATS.lock()?.get("esa_runtime").unwrap_or(&-1f64));
+                println!("-- Finished phase `{}` in {}s", "ANSV Arrays", STATS.lock()?.get("ansv_runtime").unwrap_or(&-1f64));
+                println!("-- Finished phase `{}` in {}s", "LPF Array", STATS.lock()?.get("lpf_runtime").unwrap_or(&-1f64));
+                println!("-- Finished phase `{}` in {}s", "LPF Array To LZ Array", STATS.lock()?.get("lpf_to_lz_runtime").unwrap_or(&-1f64));
+                println!();
+            }
+
+            println!("Approximate output length: {}", lz.len());
+            println!("Approximate reduction ratio: {}", (buf.len() as f64)/(lz.len() as f64));
         }
-        None => lempel_ziv_77(buf.as_ref())
-    };
-
-    let total_run_time = std::time::Instant::now() - start;
-
-    println!("<FINISHED>");
-    if stats_level > 0 {
-        println!("Compressed {} bytes in {}s.", buf.len(), float_secs(total_run_time));
-
         if stats_level > 1 {
-            println!("-- Finished phase `{}` in {}s", "Suffix Array", STATS.lock().unwrap().get("esa_runtime").unwrap_or(&-1f64));
-            println!("-- Finished phase `{}` in {}s", "ANSV Arrays", STATS.lock().unwrap().get("ansv_runtime").unwrap_or(&-1f64));
-            println!("-- Finished phase `{}` in {}s", "LPF Array", STATS.lock().unwrap().get("lpf_runtime").unwrap_or(&-1f64));
-            println!("-- Finished phase `{}` in {}s", "LPF Array To LZ Array", STATS.lock().unwrap().get("lpf_to_lz_runtime").unwrap_or(&-1f64));
-            println!();
+            let average_reduction_factor = (lz.par_iter().zip(lz.par_iter().skip(1))
+                .map(|(&l, &r)| r - l).sum::<usize>() as f64)/(lz.len() as f64 - 1f64);
+            println!("Average pattern length: {}", average_reduction_factor);
         }
+        if should_print {
+            println!("<FACTORIZATION>");
+            println!();
+            lz.iter().zip(prev_occ.iter()).zip(lz.iter().skip(1)).for_each(|((&lz_el, &prev_occ_el), &lz_next_el)| {
+                println!("{}, {} - {}", lz_el, prev_occ_el, lz_next_el - lz_el);
+            });
+        }
+        Ok(())
+    })();
 
-        println!("Approximate output length: {}", lz.len());
-        println!("Approximate reduction ratio: {}", (buf.len() as f64)/(lz.len() as f64));
+    if let Err(err) = x {
+        println!("{}", ansi_term::Color::Red.paint(err.to_string()));
     }
-    if stats_level > 1 {
-        let average_reduction_factor = (lz.par_iter().zip(lz.par_iter().skip(1))
-            .map(|(&l, &r)| r - l).sum::<usize>() as f64)/(lz.len() as f64 - 1f64);
-        println!("Average pattern length: {}", average_reduction_factor);
-    }
-     if should_print {
-         println!("<FACTORIZATION>");
-         println!();
-         println!("{:?}", lz);
-
-     }
 
 }
 
